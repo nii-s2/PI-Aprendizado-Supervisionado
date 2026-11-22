@@ -37,7 +37,7 @@ Abra http://localhost:8080 e envie `sample_data/treino.csv` e `sample_data/teste
 
 - Primeira linha com os nomes das colunas.
 - Todas as colunas numéricas.
-- A coluna alvo é a **última**, ou a informada no campo "Coluna alvo".
+- A coluna alvo é a **time**, ou a informada no campo "Coluna alvo".
 - Treino e teste com as mesmas colunas (o teste precisa do alvo para calcular o erro).
 
 ## Endpoints

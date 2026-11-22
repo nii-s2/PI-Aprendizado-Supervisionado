@@ -1,4 +1,3 @@
-"""Módulo convertido de shared/Trabalho__PI_Cifra_Cesar.ipynb."""
 import base64
 import csv
 import io
@@ -9,18 +8,13 @@ import urllib.request
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# === Célula 0 ===
-# [notebook] !import base64
-# [notebook] !import csv
-# [notebook] !import io
-# [notebook] !import math
-# [notebook] !import random
-# [notebook] !import zlib
-
 FEATURE_COLS = ["time-5", "time-4", "time-3", "time-2", "time-1"]
 TARGET_COL = "time"
 
-# === Célula 1 ===
+NOME_API_REGRESSAO = "Regressão_Linear_PI_(FUNÇÂO)"
+NOME_API_CIFRA_CESAR = "trabalho_pi_cifra_cesar"
+
+
 # --- 1. TRATAMENTO PONTA-A-PONTA (ZLIB + CIFRA DE CÉSAR + BASE64) ---
 def cifra_cesar_bytes(dados: bytes, deslocamento: int, cifrar: bool = True) -> bytes:
     passo = (deslocamento % 256) if cifrar else -(deslocamento % 256)
@@ -38,8 +32,22 @@ def desempacotar_cesar(pacote_b64: str, deslocamento: int = 7) -> bytes:
     comprimido = cifra_cesar_bytes(cifrado, deslocamento, cifrar=False)
     return zlib.decompress(comprimido)
 
-# === Célula 2 ===
-# --- 2. LEITURA E TRATAMENTO DE DADOS (MIN-MAX ) ---
+
+def converter_input_para_bytes(base_usuario) -> bytes:
+    """Converte o arquivo/dado enviado pelo input do site client em CSV bytes."""
+    if isinstance(base_usuario, bytes):
+        return base_usuario
+    if isinstance(base_usuario, str):
+        return base_usuario.encode("utf-8")
+    if hasattr(base_usuario, "read"):
+        conteudo = base_usuario.read()
+        return conteudo if isinstance(conteudo, bytes) else str(conteudo).encode("utf-8")
+    if hasattr(base_usuario, "to_csv"):
+        return base_usuario.to_csv(index=False).encode("utf-8")
+    raise TypeError("Formato de base enviado pelo site client não suportado.")
+
+
+# --- 2. LEITURA E NORMALIZAÇÃO MIN-MAX ---
 def ler_csv_de_bytes(csv_bytes: bytes, exigir_alvo: bool = True):
     texto = csv_bytes.decode("utf-8")
     leitor = csv.DictReader(io.StringIO(texto))
@@ -107,8 +115,8 @@ def desnormalizar_vetor(vetor_norm, mn, mx):
     amp = mx - mn
     return [mn if amp == 0 else v * amp + mn for v in vetor_norm]
 
-# === Célula 3 ===
-# --- 3. REGRESSÃO LINEAR MÚLTIPLA E MÉTRICAS  ---
+
+# --- 3. REGRESSÃO LINEAR MÚLTIPLA E MÉTRICAS ---
 def treinar_rl(X, y, lr=0.1, epocas=2500):
     n = len(X)
     p = len(X[0])
@@ -190,8 +198,8 @@ def expectativa_k_fold(X, y, k=5, seed=42):
         "R2_esperado": sum(r2s) / k_efetivo,
     }
 
-# === Célula 4 ===
-# --- 4. GERENCIADOR DE ESTADO DO MODELO (TREINO, TESTE E RESET) ---
+
+# --- 4. GERENCIADOR DE ESTADO DO MODELO ---
 class ServicoRegressaoPI:
     def __init__(self):
         self.resetar()
@@ -219,6 +227,8 @@ class ServicoRegressaoPI:
 
         return {
             "status": "treinado",
+            "api": NOME_API_REGRESSAO,
+            "cifra_api": NOME_API_CIFRA_CESAR,
             "amostras_treino": len(X),
             "expectativa_desempenho": self.expectativa,
         }
@@ -228,7 +238,6 @@ class ServicoRegressaoPI:
             raise RuntimeError("Modelo não treinado. Realize o treino antes do teste.")
 
         csv_bytes = desempacotar_cesar(pacote_b64, deslocamento)
-        # Primeiro lê sem exigir alvo para descobrir se a coluna 'time' existe e tem valores
         X, _, linhas, possui_col_alvo = ler_csv_de_bytes(csv_bytes, exigir_alvo=False)
         X_norm = aplicar_minmax_matriz(X, self.mins_x, self.maxs_x)
         pred_norm = prever_rl(X_norm, self.pesos, self.bias)
@@ -268,7 +277,6 @@ class ServicoRegressaoPI:
         else:
             avaliacao["mensagem"] = "Teste sem rótulos: previsões geradas sem avaliação."
 
-        # Monta CSV de saída em memória
         buf_csv = io.StringIO()
         colunas_saida = list(linhas[0].keys()) if linhas else FEATURE_COLS + ["time_previsto"]
         escritor = csv.DictWriter(buf_csv, fieldnames=colunas_saida)
@@ -277,26 +285,16 @@ class ServicoRegressaoPI:
 
         pacote_resposta = empacotar_cesar(buf_csv.getvalue().encode("utf-8"), deslocamento)
         return {
+            "api": NOME_API_REGRESSAO,
+            "cifra_api": NOME_API_CIFRA_CESAR,
             "avaliacao": avaliacao,
             "pacote_resposta_b64": pacote_resposta,
         }
 
-# === Célula 6 ===
-# [notebook] !import json
-# [notebook] !from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-# [notebook] !from nucleo_pi import ServicoRegressaoPI
 
+# --- 5. SERVIDOR HTTP ---
 SERVICO = ServicoRegressaoPI()
 
-# === Célula 7 ===
-# [notebook] !python servidor_pi.py
-# [notebook] !pip install pyinstaller
-
-# === Célula 8 ===
-import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-# Note: Garanta também que o módulo nucleo_pi esteja carregado ou definido antes de usar o SERVICO
 
 class HandlerPI(BaseHTTPRequestHandler):
     def _enviar_json(self, codigo_status: int, payload: dict):
@@ -316,7 +314,15 @@ class HandlerPI(BaseHTTPRequestHandler):
         try:
             if self.path == "/reset":
                 SERVICO.resetar()
-                self._enviar_json(200, {"status": "resetado", "mensagem": "Modelo resetado com sucesso."})
+                self._enviar_json(
+                    200,
+                    {
+                        "status": "resetado",
+                        "api": NOME_API_REGRESSAO,
+                        "cifra_api": NOME_API_CIFRA_CESAR,
+                        "mensagem": "Modelo resetado com sucesso.",
+                    },
+                )
 
             elif self.path == "/treinar":
                 dados = self._ler_json()
@@ -342,125 +348,72 @@ def iniciar_servidor(host="0.0.0.0", porta=8000):
     servidor.serve_forever()
 
 
-if __name__ == "__main__":
-    iniciar_servidor()
-
-# === Célula 10 ===
-# [notebook] !import json
-# [notebook] !import tkinter as tk
-# [notebook] !from tkinter import filedialog, messagebox, scrolledtext
-# [notebook] !import urllib.request
-# [notebook] !from nucleo_pi import desempacotar_cesar, empacotar_cesar
-
-# === Célula 11 ===
-def requisicao_post(url: str, payload: dict, timeout: int = 60) -> dict:
+# --- 6. CHAMADAS DE API A PARTIR DO INPUT DO SITE CLIENT ---
+def requisicao_post(url: str, payload: dict, api_nome: str, timeout: int = 60) -> dict:
     corpo = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=corpo,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Name": api_nome,
+            "X-Cifra-API": NOME_API_CIFRA_CESAR,
+        },
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
-class AppClientePI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("PI - Regressão Linear Remota (Na Unha + Cifra de César)")
-        self.root.geometry("720x500")
-
-        topo = tk.Frame(root)
-        topo.pack(fill="x", padx=10, pady=8)
-
-        tk.Label(topo, text="URL do Servidor:").grid(row=0, column=0, sticky="w")
-        self.entry_url = tk.Entry(topo, width=42)
-        self.entry_url.insert(0, "http://127.0.0.1:8000")
-        self.entry_url.grid(row=0, column=1, padx=6)
-
-        tk.Label(topo, text="Chave César:").grid(row=0, column=2, sticky="e")
-        self.entry_chave = tk.Entry(topo, width=8)
-        self.entry_chave.insert(0, "7")
-        self.entry_chave.grid(row=0, column=3, padx=6)
-
-        botoes = tk.Frame(root)
-        botoes.pack(pady=6)
-
-        tk.Button(botoes, text="1. Resetar Modelo", command=self.resetar).grid(row=0, column=0, padx=6)
-        tk.Button(botoes, text="2. Upload CSV Treino", command=self.treinar).grid(row=0, column=1, padx=6)
-        tk.Button(botoes, text="3. Upload CSV Teste", command=self.testar).grid(row=0, column=2, padx=6)
-
-        self.log_area = scrolledtext.ScrolledText(root, width=84, height=22)
-        self.log_area.pack(padx=10, pady=10)
-
-    def log(self, texto: str):
-        self.log_area.insert(tk.END, texto + "\n")
-        self.log_area.see(tk.END)
-
-    def _url_base(self) -> str:
-        return self.entry_url.get().strip().rstrip("/")
-
-    def _chave(self) -> int:
-        return int(self.entry_chave.get().strip())
-
-    def resetar(self):
-        try:
-            res = requisicao_post(f"{self._url_base()}/reset", {})
-            self.log(f"[RESET] {json.dumps(res, ensure_ascii=False)}")
-        except Exception as e:
-            messagebox.showerror("Erro no reset", str(e))
-
-    def treinar(self):
-        caminho = filedialog.askopenfilename(filetypes=[("Arquivos CSV", "*.csv")])
-        if not caminho:
-            return
-        try:
-            with open(caminho, "rb") as f:
-                csv_bytes = f.read()
-            chave = self._chave()
-            pacote = empacotar_cesar(csv_bytes, deslocamento=chave)
-            res = requisicao_post(
-                f"{self._url_base()}/treinar",
-                {"pacote_b64": pacote, "deslocamento": chave},
-            )
-            self.log(f"[TREINO] {json.dumps(res, ensure_ascii=False, indent=2)}")
-        except Exception as e:
-            messagebox.showerror("Erro no treino", str(e))
-
-    def testar(self):
-        caminho = filedialog.askopenfilename(filetypes=[("Arquivos CSV", "*.csv")])
-        if not caminho:
-            return
-        try:
-            with open(caminho, "rb") as f:
-                csv_bytes = f.read()
-            chave = self._chave()
-            pacote = empacotar_cesar(csv_bytes, deslocamento=chave)
-            res = requisicao_post(
-                f"{self._url_base()}/testar",
-                {"pacote_b64": pacote, "deslocamento": chave},
-            )
-            self.log(f"[AVALIAÇÃO] {json.dumps(res['avaliacao'], ensure_ascii=False, indent=2)}")
-
-            csv_resultado = desempacotar_cesar(res["pacote_resposta_b64"], deslocamento=chave)
-            destino = filedialog.asksaveasfilename(
-                defaultextension=".csv",
-                initialfile="previsoes_time.csv",
-                filetypes=[("Arquivos CSV", "*.csv")],
-            )
-            if destino:
-                with open(destino, "wb") as f:
-                    f.write(csv_resultado)
-                self.log(f"[DOWNLOAD] Arquivo salvo em: {destino}")
-        except Exception as e:
-            messagebox.showerror("Erro no teste", str(e))
+def resetar_api_client(url_base: str = "http://127.0.0.1:8000", chave: int = 7) -> dict:
+    return requisicao_post(
+        f"{url_base.rstrip('/')}/reset",
+        {
+            "api": NOME_API_REGRESSAO,
+            "cifra_api": NOME_API_CIFRA_CESAR,
+            "deslocamento": chave,
+        },
+        api_nome=NOME_API_REGRESSAO,
+    )
 
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = AppClientePI(root)
-    root.mainloop()
+def treinar_api_client(
+    base_treino_usuario,
+    url_base: str = "http://127.0.0.1:8000",
+    chave: int = 7,
+) -> dict:
+    """Recebe a base de treino do input do site client, aplica cifra de César e chama a API."""
+    csv_bytes = converter_input_para_bytes(base_treino_usuario)
+    pacote = empacotar_cesar(csv_bytes, deslocamento=chave)
+    return requisicao_post(
+        f"{url_base.rstrip('/')}/treinar",
+        {
+            "api": NOME_API_REGRESSAO,
+            "cifra_api": NOME_API_CIFRA_CESAR,
+            "pacote_b64": pacote,
+            "deslocamento": chave,
+        },
+        api_nome=NOME_API_REGRESSAO,
+    )
 
-# === Célula 12 ===
-# [notebook] !pyinstaller --onefile --add-data "nucleo_pi.py;." cliente_pi.py
+
+def testar_api_client(
+    base_teste_usuario,
+    url_base: str = "http://127.0.0.1:8000",
+    chave: int = 7,
+):
+    """Recebe a base de teste do input do site client, chama a API e retorna avaliação + CSV previsto."""
+    csv_bytes = converter_input_para_bytes(base_teste_usuario)
+    pacote = empacotar_cesar(csv_bytes, deslocamento=chave)
+    res = requisicao_post(
+        f"{url_base.rstrip('/')}/testar",
+        {
+            "api": NOME_API_REGRESSAO,
+            "cifra_api": NOME_API_CIFRA_CESAR,
+            "pacote_b64": pacote,
+            "deslocamento": chave,
+        },
+        api_nome=NOME_API_REGRESSAO,
+    )
+    csv_resultado_bytes = desempacotar_cesar(res["pacote_resposta_b64"], deslocamento=chave)
+    return res["avaliacao"], csv_resultado_bytes, res

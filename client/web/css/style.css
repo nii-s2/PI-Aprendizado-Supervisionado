@@ -121,10 +121,21 @@ h3 small { color: var(--muted); font: 400 .88rem var(--font-body); margin-left: 
 
 /* ---------- resultados ---------- */
 .result { margin-top: 1.5rem; padding-top: .25rem; border-top: 1px solid var(--steel); }
-.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; margin: 0; }
-.metrics div { background: var(--ink); border: 1px solid var(--steel); border-left: 4px solid var(--gold); border-radius: 8px; padding: .8rem 1rem; }
-.metrics dt { color: var(--muted); font-size: .88rem; }
-.metrics dd { margin: 0; font: 600 1.45rem var(--font-display); font-variant-numeric: tabular-nums; color: var(--peach); }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: .75rem; margin: 0; }
+.metrics div {
+  min-width: 0;                       /* deixa o card encolher dentro da grade em vez de ser esticado pelo número */
+  container-type: inline-size;        /* permite dimensionar a fonte pela largura do próprio card (unidade cqi) */
+  background: var(--ink); border: 1px solid var(--steel); border-left: 4px solid var(--gold); border-radius: 8px; padding: .8rem 1rem;
+}
+.metrics dt { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+.metrics dd {
+  margin: 0; color: var(--peach);
+  font: 600 1.15rem var(--font-display);               /* fallback p/ navegadores sem cqi */
+  font-size: clamp(.85rem, 12cqi, 1.45rem);            /* números longos (ex.: 1.857.235,5638) encolhem para caber */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;                                  /* não quebra dígitos no meio */
+  overflow: hidden; text-overflow: ellipsis;            /* último recurso: nunca vaza da caixa */
+}
 
 .plot { margin: 1.75rem 0 1.25rem; background: var(--ink); border: 1px solid var(--steel); border-radius: var(--radius); padding: .5rem; }
 .plot img { display: block; width: 100%; height: auto; border-radius: 6px; }

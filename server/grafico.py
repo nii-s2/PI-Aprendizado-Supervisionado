@@ -39,8 +39,8 @@ def gerar_grafico(reais: list[float], previsoes: list[float]) -> bytes:
     ax = axes[0]
     x = list(range(1, len(previsoes) + 1))
     if tem_reais:
-        ax.plot(x, reais, color=GOLD, linewidth=2.2, label="Real (time)")
-    ax.plot(x, previsoes, color=ICE, linewidth=2.2, linestyle="--", label="Previsto")
+        ax.plot(x, reais, color=ICE, linewidth=2.2, label="Real (time)")
+    ax.plot(x, previsoes, color=GOLD, linewidth=2.2, linestyle="--", label="Previsto")
     ax.set_xlabel("Linha da base de teste")
     ax.set_ylabel("time")
     ax.set_title("Série real e prevista")
@@ -70,8 +70,8 @@ def gerar_grafico_treino(reais: list[float], ajuste: list[float]) -> bytes:
     """Mesmo gráfico do notebook: ajuste linear x série temporal na base de treino."""
     fig, ax = plt.subplots(figsize=(13, 5.2), dpi=300, facecolor=NAVY)
     x = list(range(len(reais)))
-    ax.plot(x, ajuste, color=ICE, linewidth=2.0, label="Linear Fitting")
-    ax.plot(x, reais, color=GOLD, linewidth=2.0, label="Time Serie")
+    ax.plot(x, ajuste, color=GOLD, linewidth=2.0, label="Linear Fitting")
+    ax.plot(x, reais, color=ICE, linewidth=2.0, label="Time Serie")
     ax.set_xlabel("Linha da base de treino")
     ax.set_ylabel("time")
     ax.set_title("Ajuste linear na base de treino")

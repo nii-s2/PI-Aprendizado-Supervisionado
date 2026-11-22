@@ -1,36 +1,47 @@
-"""API do servidor: recebe bases criptografadas, treina, testa e devolve os resultados."""
-import base64
-import io
+"""API local do servidor: /health, /status, /reset, /treinar, /testar."""
 import logging
+import os
+import sys
+import threading
 
-import pandas as pd
 from flask import Flask, jsonify, request
 
-from shared.compress_encrypt import compress_and_encrypt, compress_bytes, encrypt_bytes
-from shared.decompress_decrypt import decrypt_and_decompress
-from model import run_regression
+SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(SERVER_DIR, ".."))
+for p in (SERVER_DIR, ROOT_DIR):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+from nucleo_pi import ServicoRegressaoPI
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 log = logging.getLogger("server")
 
+SERVICO = ServicoRegressaoPI()
+TRAVA = threading.Lock()  # um treino/teste/reset por vez
 
-def _load_csv(field: str, nome: str) -> pd.DataFrame:
-    f = request.files.get(field)
-    if f is None:
-        raise ValueError(f"Base de {nome} não enviada.")
+
+def _dados_pacote():
+    dados = request.get_json(silent=True) or {}
+    if "pacote_b64" not in dados:
+        raise ValueError("Requisição sem 'pacote_b64'.")
     try:
-        raw = decrypt_and_decompress(f.read())
-    except Exception as exc:
-        raise ValueError(f"Não foi possível descriptografar a base de {nome}. Confira a chave.") from exc
+        deslocamento = int(dados.get("deslocamento", 7))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("'deslocamento' deve ser um número inteiro.") from exc
+    return dados["pacote_b64"], deslocamento
+
+
+def _executar(acao):
     try:
-        return pd.read_csv(io.BytesIO(raw))
-    except Exception as exc:
-        raise ValueError(f"A base de {nome} não é um CSV válido.") from exc
-
-
-def _b64(data: bytes) -> str:
-    return base64.b64encode(data).decode()
+        with TRAVA:
+            return jsonify(acao())
+    except (ValueError, RuntimeError) as exc:
+        return jsonify(erro=str(exc)), 400
+    except Exception:
+        log.exception("Erro inesperado")
+        return jsonify(erro="Erro interno no servidor."), 500
 
 
 @app.get("/health")
@@ -38,21 +49,37 @@ def health():
     return jsonify(status="ok")
 
 
-@app.post("/train")
-def train():
-    try:
-        train_df = _load_csv("train", "treino")
-        test_df = _load_csv("test", "teste")
-        metrics, results, plot_png = run_regression(train_df, test_df, request.form.get("target"))
+@app.get("/status")
+def status():
+    return _executar(SERVICO.status)
 
-        csv_gz = compress_bytes(results.to_csv(index=False).encode("utf-8"))
-        return jsonify(
-            metrics=metrics,
-            results_csv_gz_enc=_b64(encrypt_bytes(csv_gz)),   # CSV compactado, depois criptografado
-            plot_png_enc=_b64(compress_and_encrypt(plot_png)),  # PNG compactado e criptografado
-        )
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
-    except Exception:
-        log.exception("Erro inesperado")
-        return jsonify(error="Erro interno ao treinar o modelo."), 500
+
+@app.post("/reset")
+def reset():
+    def acao():
+        SERVICO.resetar()
+        return {"status": "resetado", "mensagem": "Modelo resetado com sucesso."}
+    return _executar(acao)
+
+
+@app.post("/treinar")
+def treinar():
+    def acao():
+        pacote, desl = _dados_pacote()
+        return SERVICO.treinar_pacote(pacote, desl)
+    return _executar(acao)
+
+
+@app.post("/testar")
+def testar():
+    def acao():
+        pacote, desl = _dados_pacote()
+        return SERVICO.testar_pacote(pacote, desl)
+    return _executar(acao)
+
+
+if __name__ == "__main__":
+    host = os.environ.get("SERVER_HOST", "127.0.0.1")
+    port = int(os.environ.get("SERVER_PORT", "5000"))
+    print(f"Servidor de processamento rodando localmente em http://{host}:{port}")
+    app.run(host=host, port=port, debug=False, threaded=True)

@@ -1,56 +1,43 @@
-# Regressão Segura
+# Regressão Segura (Execução Local)
 
-Envie uma base de **treino** e uma de **teste** (CSV). Elas são **compactadas (gzip) e criptografadas (AES-256-GCM)** pelo client, descompactadas e descriptografadas pelo server, que treina uma **regressão linear**, testa e devolve o **CSV de resultados compactado** e o **gráfico**.
+Prevê o valor atual de uma **série temporal** (coluna `time`) a partir das **5 observações anteriores** (`time-5` … `time-1`). As bases são **compactadas (`zlib`) e criptografadas (cifra de César)** pelo client com a chave informada na interface web, e o server local treina e testa o modelo, devolvendo o CSV compactado (`.zip`) e o gráfico (`.png`).
 
-## Arquitetura
+## Arquitetura Local (Sem Docker)
 
 ```
-Navegador ──CSV──► client (Flask :8080) ──.enc──► server (Flask :5000, interno)
- HTML/CSS/JS        compress_encrypt.py            decompress_decrypt.py
-                    decompress_decrypt.py  ◄─.enc─ compress_encrypt.py
-                    (resposta)                     LinearRegression + gráfico
+Navegador ──CSV + chave──► client/app.py (:8080) ──pacote_b64──► server/app.py (:5000)
+ HTML/CSS/JS               shared/trabalho_pi_cifra_cesar.py     shared/trabalho_pi_cifra_cesar.py
+                           (entrega .zip e gráfico)              server/nucleo_pi.py + server/grafico.py
 ```
 
-| Pasta | Função |
+| Arquivo | Função |
 |---|---|
-| `client/web/` | Site: `index.html`, `css/style.css`, `js/app.js` |
-| `client/app.py` | API do client: recebe os CSVs, compacta + criptografa, chama o server, descriptografa a resposta |
-| `server/app.py` | API do server: `POST /train`, `GET /health` |
-| `server/model.py` | Treino, teste, métricas e gráfico (matplotlib) |
-| `shared/compress_encrypt.py` | gzip → AES-256-GCM |
-| `shared/decompress_decrypt.py` | AES-256-GCM → gunzip |
-| `sample_data/` | CSVs de exemplo |
+| `shared/trabalho_pi_cifra_cesar.py` | Arquivo `.py` convertido de `Trabalho__PI_Cifra_Cesar.ipynb` (compactação `zlib`, cifra de César, leitura CSV, normalização Min-Max, regressão e `ServicoRegressaoPI`) |
+| `client/web/` | Interface Web local: `index.html`, `css/style.css`, `js/app.js` |
+| `client/app.py` | Servidor local de HTML + API (`/api/status`, `/api/reset`, `/api/treinar`, `/api/testar`) |
+| `server/app.py` | Servidor local de processamento (`/status`, `/reset`, `/treinar`, `/testar`) |
+| `server/nucleo_pi.py` | Integra `ServicoRegressaoPI` de `shared/trabalho_pi_cifra_cesar.py` com `/status` e geração de gráfico |
+| `server/grafico.py` | Gera o gráfico comparativo (`série real × prevista` e dispersão) |
+| `rodar_local.py` | Inicia automaticamente o `server` (`127.0.0.1:5000`) e o `client` (`127.0.0.1:8080`) |
 
-## Como rodar
+## Como rodar localmente
 
+1. Instale as dependências:
 ```bash
-cp .env.example .env
-# gere a chave e cole em ENCRYPTION_KEY dentro do .env:
-python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
-
-docker compose up --build
+pip install -r requirements.txt
 ```
 
-Abra http://localhost:8080 e envie `sample_data/treino.csv` e `sample_data/teste.csv`.
+2. Execute em um único comando:
+```bash
+python rodar_local.py
+```
+Ou abra dois terminais separados:
+```bash
+# Terminal 1 (Server)
+python server/app.py
 
-## Formato dos CSVs
+# Terminal 2 (Client Web)
+python client/app.py
+```
 
-- Primeira linha com os nomes das colunas.
-- Todas as colunas numéricas.
-- A coluna alvo é a **time**, ou a informada no campo "Coluna alvo".
-- Treino e teste com as mesmas colunas (o teste precisa do alvo para calcular o erro).
-
-## Endpoints
-
-| Método | Rota | Onde | Descrição |
-|---|---|---|---|
-| POST | `/api/process` | client | `multipart`: `train`, `test`, `target` (opcional). Devolve métricas, `results_csv_gz` e `plot_png` em base64 |
-| POST | `/train` | server | `multipart` com `train` e `test` já criptografados. Devolve métricas + resultados criptografados |
-| GET | `/health` | server | Verificação de saúde |
-
-## Segurança
-
-- AES-256-GCM com nonce aleatório por arquivo; o GCM também detecta adulteração.
-- A chave fica só em `.env` (ignorado pelo git) e é compartilhada por client e server.
-- O server não é publicado no host, só responde na rede interna do compose.
-- Entre navegador e client o tráfego é local (HTTP). Fora do ambiente de desenvolvimento, coloque HTTPS (proxy reverso) na frente do client.
+3. Acesse `http://127.0.0.1:8080` no navegador e teste com `sample_data/treino.csv` e `sample_data/teste.csv`.

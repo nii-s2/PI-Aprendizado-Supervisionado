@@ -1,6 +1,2 @@
 flask>=3.0
-gunicorn>=22.0
-pandas>=2.2
-scikit-learn>=1.5
 matplotlib>=3.9
-cryptography>=43.0

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Regressão Segura</title>
+  <title>Projeto Integrador</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,65 +12,82 @@
 <body>
   <header class="hero">
     <div class="wrap">
-      <h1>Regressão Segura</h1>
-      <p class="lead">Envie suas bases de treino e teste em CSV. Elas viajam compactadas e criptografadas, o servidor treina uma regressão linear e devolve o resultado.</p>
+      <h1>Projeto Integrador</h1>
+      <p class="lead">Preveja o valor atual de uma série temporal a partir das 5 observações anteriores. As bases viajam compactadas e criptografadas com a sua chave.</p>
       <ol class="pipeline" aria-label="Caminho dos dados">
-        <li><strong>Client</strong><span>compacta e criptografa</span></li>
-        <li><strong>Server</strong><span>descriptografa e descompacta</span></li>
-        <li><strong>Modelo</strong><span>treina e testa</span></li>
-        <li><strong>Resultado</strong><span>CSV compactado e gráfico</span></li>
+        <li><strong>Client</strong><span>compacta (zlib) e aplica a cifra de César</span></li>
+        <li><strong>Server</strong><span>desfaz a cifra e descompacta</span></li>
+        <li><strong>Modelo</strong><span>treina com uma base e testa com outra</span></li>
+        <li><strong>Resultado</strong><span>CSV compactado (.zip) e gráfico</span></li>
       </ol>
     </div>
   </header>
 
   <main class="wrap">
-    <form id="form" class="panel" novalidate>
-      <div class="drops">
-        <label class="drop" id="drop-train" for="train">
-          <input type="file" id="train" name="train" accept=".csv,text/csv">
-          <span class="drop-title">Base de treino</span>
-          <span class="drop-hint" data-hint>Arraste um .csv ou clique para escolher</span>
-        </label>
-        <label class="drop" id="drop-test" for="test">
-          <input type="file" id="test" name="test" accept=".csv,text/csv">
-          <span class="drop-title">Base de teste</span>
-          <span class="drop-hint" data-hint>Arraste um .csv ou clique para escolher</span>
-        </label>
-      </div>
-
+    <section class="panel toolbar" aria-label="Chave e estado do modelo">
       <div class="field">
-        <label for="target">Coluna alvo (opcional)</label>
-        <input type="text" id="target" name="target" placeholder="Se vazio, usa a última coluna">
-        <p class="help">As demais colunas viram variáveis de entrada e precisam ser numéricas. A base de teste deve ter as mesmas colunas, inclusive o alvo.</p>
+        <label for="chave">Chave de criptografia</label>
+        <input type="number" id="chave" name="chave" value="7" step="1" inputmode="numeric" required>
+        <p class="help">Número inteiro usado como deslocamento da cifra de César. Vale para o treino e para o teste.</p>
+      </div>
+      <div class="model-state">
+        <span class="label">Modelo</span>
+        <span id="pill" class="pill" role="status" aria-live="polite">Verificando…</span>
+        <button type="button" id="reset" class="btn btn-ghost">Resetar modelo</button>
+        <p class="help">Apaga o treino atual para você treinar com outra base.</p>
+      </div>
+    </section>
+
+    <p id="error" class="error" role="alert" hidden></p>
+
+    <form id="form-train" class="panel" novalidate>
+      <h2><span class="step">1</span> Treino</h2>
+      <label class="drop" id="drop-train" for="train">
+        <input type="file" id="train" name="train" accept=".csv,text/csv">
+        <span class="drop-title">Base de treino</span>
+        <span class="drop-hint" data-hint>Arraste um .csv ou clique para escolher</span>
+      </label>
+      <p class="help">Colunas: <code>time-5</code>, <code>time-4</code>, <code>time-3</code>, <code>time-2</code>, <code>time-1</code> (as 5 observações anteriores) e <code>time</code> (o valor a prever).</p>
+      <div class="actions">
+        <button type="submit" id="btn-train" class="btn">Treinar modelo</button>
+        <span id="status-train" class="status" role="status" aria-live="polite"></span>
       </div>
 
-      <div class="actions">
-        <button type="submit" id="submit" class="btn">Treinar modelo</button>
-        <span id="status" class="status" role="status" aria-live="polite"></span>
+      <div id="train-result" class="result" hidden>
+        <h3>Desempenho esperado <small>(validação cruzada, 5 partes)</small></h3>
+        <dl class="metrics" id="train-metrics"></dl>
       </div>
-      <p id="error" class="error" role="alert" hidden></p>
     </form>
 
-    <section id="results" class="results" hidden aria-labelledby="results-title">
-      <h2 id="results-title">Resultado do teste</h2>
-
-      <dl class="metrics" id="metrics"></dl>
-
-      <figure class="plot">
-        <img id="plot" alt="Gráfico com os valores reais e previstos na base de teste">
-      </figure>
-
-      <div class="downloads">
-        <a id="dl-csv" class="btn" download="resultado.csv.gz">Baixar resultado (.csv.gz)</a>
-        <a id="dl-plot" class="btn btn-ghost" download="grafico.png">Baixar gráfico (.png)</a>
+    <form id="form-test" class="panel" novalidate>
+      <h2><span class="step">2</span> Teste</h2>
+      <label class="drop" id="drop-test" for="test">
+        <input type="file" id="test" name="test" accept=".csv,text/csv">
+        <span class="drop-title">Base de teste</span>
+        <span class="drop-hint" data-hint>Arraste um .csv ou clique para escolher</span>
+      </label>
+      <p class="help">Mesmas colunas do treino. Se <code>time</code> estiver ausente ou vazio, o servidor só gera as previsões, sem avaliar.</p>
+      <div class="actions">
+        <button type="submit" id="btn-test" class="btn" disabled>Testar modelo</button>
+        <span id="status-test" class="status" role="status" aria-live="polite"></span>
       </div>
 
-      <h3>Coeficientes do modelo</h3>
-      <table class="coefs">
-        <thead><tr><th scope="col">Variável</th><th scope="col">Coeficiente</th></tr></thead>
-        <tbody id="coefs"></tbody>
-      </table>
-    </section>
+      <div id="test-result" class="result" hidden>
+        <p id="test-msg" class="note" hidden></p>
+        <h3>Desempenho no teste</h3>
+        <dl class="metrics" id="test-metrics"></dl>
+        <h3>Diferença para o esperado <small>(real − esperado)</small></h3>
+        <dl class="metrics" id="test-diff"></dl>
+
+        <figure class="plot">
+          <img id="plot" alt="Série real e prevista na base de teste">
+        </figure>
+        <div class="downloads">
+          <a id="dl-zip" class="btn" download="previsoes_time.zip">Baixar resultado (.zip)</a>
+          <a id="dl-plot" class="btn btn-ghost" download="grafico.png">Baixar gráfico (.png)</a>
+        </div>
+      </div>
+    </form>
   </main>
 
   <script src="js/app.js"></script>

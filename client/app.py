@@ -1,19 +1,37 @@
-"""Client: serve o site e, a cada envio, compacta + criptografa as bases antes de
-mandá-las ao server; depois descriptografa os resultados para o navegador."""
+"""Client local: serve o site HTML e usa shared/trabalho_pi_cifra_cesar.py para
+compactar/criptografar antes de chamar o server local e descompactar/descriptografar na volta."""
 import base64
+import io
 import os
+import sys
+import zipfile
 
 import requests
 from flask import Flask, jsonify, request, send_from_directory
 
-from shared.compress_encrypt import compress_and_encrypt
-from shared.decompress_decrypt import decrypt_and_decompress, decrypt_bytes
+CLIENT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(CLIENT_DIR, ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
-SERVER_URL = os.environ.get("SERVER_URL", "http://server:5000")
-WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
+from shared.trabalho_pi_cifra_cesar import desempacotar_cesar, empacotar_cesar
+
+SERVER_URL = os.environ.get("SERVER_URL", "http://127.0.0.1:5000")
+WEB_DIR = os.path.join(CLIENT_DIR, "web")
 
 app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
+
+
+class ErroApi(Exception):
+    def __init__(self, mensagem, codigo=400):
+        super().__init__(mensagem)
+        self.codigo = codigo
+
+
+@app.errorhandler(ErroApi)
+def _erro(exc):
+    return jsonify(error=str(exc)), exc.codigo
 
 
 @app.get("/")
@@ -21,48 +39,83 @@ def index():
     return send_from_directory(WEB_DIR, "index.html")
 
 
-def _read_upload(field: str, nome: str) -> bytes:
-    f = request.files.get(field)
+def _chave() -> int:
+    try:
+        return int(request.form.get("chave", "").strip())
+    except ValueError:
+        raise ErroApi("A chave de criptografia deve ser um número inteiro.")
+
+
+def _csv(campo: str, nome: str) -> bytes:
+    f = request.files.get(campo)
     if f is None or not f.filename:
-        raise ValueError(f"Envie a base de {nome}.")
+        raise ErroApi(f"Envie a base de {nome}.")
     if not f.filename.lower().endswith(".csv"):
-        raise ValueError(f"A base de {nome} deve ser um arquivo .csv.")
+        raise ErroApi(f"A base de {nome} deve ser um arquivo .csv.")
     return f.read()
 
 
-@app.post("/api/process")
-def process():
+def _server(metodo: str, rota: str, payload: dict | None = None) -> dict:
     try:
-        train = _read_upload("train", "treino")
-        test = _read_upload("test", "teste")
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
-
-    try:
-        resp = requests.post(
-            f"{SERVER_URL}/train",
-            files={
-                "train": ("train.csv.gz.enc", compress_and_encrypt(train)),
-                "test": ("test.csv.gz.enc", compress_and_encrypt(test)),
-            },
-            data={"target": request.form.get("target", "")},
-            timeout=120,
-        )
+        resp = requests.request(metodo, f"{SERVER_URL}{rota}", json=payload, timeout=300)
     except requests.RequestException:
-        return jsonify(error="Não foi possível falar com o servidor de treino."), 502
-
-    body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        raise ErroApi(
+            f"Não foi possível falar com o servidor local ({SERVER_URL}). Verifique se server/app.py está rodando.",
+            502,
+        )
+    try:
+        corpo = resp.json()
+    except ValueError:
+        corpo = {}
     if resp.status_code != 200:
-        return jsonify(error=body.get("error", "Falha no servidor de treino.")), resp.status_code
+        raise ErroApi(corpo.get("erro", "Falha no servidor de treino."), resp.status_code)
+    return corpo
+
+
+@app.get("/api/status")
+def status():
+    return jsonify(_server("GET", "/status"))
+
+
+@app.post("/api/reset")
+def reset():
+    return jsonify(_server("POST", "/reset", {}))
+
+
+@app.post("/api/treinar")
+def treinar():
+    chave = _chave()
+    csv_bytes = _csv("train", "treino")
+    pacote = empacotar_cesar(csv_bytes, deslocamento=chave)   # zlib + César + base64
+    return jsonify(_server("POST", "/treinar", {"pacote_b64": pacote, "deslocamento": chave}))
+
+
+@app.post("/api/testar")
+def testar():
+    chave = _chave()
+    csv_bytes = _csv("test", "teste")
+    pacote = empacotar_cesar(csv_bytes, deslocamento=chave)
+    corpo = _server("POST", "/testar", {"pacote_b64": pacote, "deslocamento": chave})
 
     try:
-        csv_gz = decrypt_bytes(base64.b64decode(body["results_csv_gz_enc"]))     # continua .gz
-        plot_png = decrypt_and_decompress(base64.b64decode(body["plot_png_enc"]))
+        csv_resultado = desempacotar_cesar(corpo["pacote_resposta_b64"], deslocamento=chave)
+        grafico_png = desempacotar_cesar(corpo["pacote_grafico_b64"], deslocamento=chave)
     except Exception:
-        return jsonify(error="Não foi possível descriptografar a resposta do servidor."), 502
+        raise ErroApi("Não foi possível descriptografar a resposta do servidor.", 502)
+
+    zip_buf = io.BytesIO()                                    # CSV de resultado compactado
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("previsoes_time.csv", csv_resultado)
 
     return jsonify(
-        metrics=body["metrics"],
-        results_csv_gz=base64.b64encode(csv_gz).decode(),
-        plot_png=base64.b64encode(plot_png).decode(),
+        avaliacao=corpo["avaliacao"],
+        resultado_zip=base64.b64encode(zip_buf.getvalue()).decode(),
+        grafico_png=base64.b64encode(grafico_png).decode(),
     )
+
+
+if __name__ == "__main__":
+    host = os.environ.get("CLIENT_HOST", "127.0.0.1")
+    port = int(os.environ.get("CLIENT_PORT", "8080"))
+    print(f"Interface Web (Client) rodando localmente em http://{host}:{port}")
+    app.run(host=host, port=port, debug=False, threaded=True)

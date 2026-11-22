@@ -64,3 +64,23 @@ def gerar_grafico(reais: list[float], previsoes: list[float]) -> bytes:
     fig.savefig(buf, format="png", dpi=300, facecolor=NAVY, bbox_inches="tight")
     plt.close(fig)
     return buf.getvalue()
+
+
+def gerar_grafico_treino(reais: list[float], ajuste: list[float]) -> bytes:
+    """Mesmo gráfico do notebook: ajuste linear x série temporal na base de treino."""
+    fig, ax = plt.subplots(figsize=(13, 5.2), dpi=300, facecolor=NAVY)
+    x = list(range(len(reais)))
+    ax.plot(x, ajuste, color=ICE, linewidth=2.0, label="Linear Fitting")
+    ax.plot(x, reais, color=GOLD, linewidth=2.0, label="Time Serie")
+    ax.set_xlabel("Linha da base de treino")
+    ax.set_ylabel("time")
+    ax.set_title("Ajuste linear na base de treino")
+    ax.margins(x=0.01)
+    ax.legend(facecolor=STEEL, edgecolor=STEEL, labelcolor=PEACH, fontsize=11, loc="best")
+    _estilo(ax)
+
+    fig.tight_layout(pad=1.6)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=300, facecolor=NAVY, bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()

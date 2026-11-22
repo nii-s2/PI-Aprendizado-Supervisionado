@@ -139,3 +139,10 @@ h3 small { color: var(--muted); font: 400 .88rem var(--font-body); margin-left: 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation-duration: 0.01ms !important; }
 }
+
+/* tabela de parâmetros do modelo */
+.coefs { width: 100%; border-collapse: collapse; background: var(--ink); border: 1px solid var(--steel); border-radius: 8px; overflow: hidden; }
+.coefs th, .coefs td { padding: .55rem 1rem; text-align: left; border-bottom: 1px solid var(--steel); }
+.coefs tbody tr:last-child td { border-bottom: 0; }
+.coefs th { background: var(--steel); font-weight: 600; }
+.coefs td:last-child, .coefs th:last-child { text-align: right; font-variant-numeric: tabular-nums; }

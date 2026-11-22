@@ -54,8 +54,24 @@
       </div>
 
       <div id="train-result" class="result" hidden>
-        <h3>Desempenho esperado <small>(validação cruzada, 5 partes)</small></h3>
+        <h3>Desempenho esperado <small>(hold-out cronológico: últimos 20% das linhas)</small></h3>
         <dl class="metrics" id="train-metrics"></dl>
+
+        <h3>Desempenho no treino <small>(ajuste feito com a base toda)</small></h3>
+        <dl class="metrics" id="train-fit-metrics"></dl>
+
+        <h3>Parâmetros do modelo <small>(entradas normalizadas por min-max, 2 casas como no notebook)</small></h3>
+        <table class="coefs">
+          <thead><tr><th scope="col">Parâmetro</th><th scope="col">Valor</th></tr></thead>
+          <tbody id="train-params"></tbody>
+        </table>
+
+        <figure class="plot" id="train-plot-box" hidden>
+          <img id="plot-train" alt="Ajuste linear sobre a série temporal da base de treino">
+        </figure>
+        <div class="downloads" id="train-downloads" hidden>
+          <a id="dl-plot-train" class="btn btn-ghost" download="ajuste_treino.png">Baixar gráfico do treino (.png)</a>
+        </div>
       </div>
     </form>
 

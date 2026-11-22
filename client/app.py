@@ -14,7 +14,8 @@ ROOT_DIR = os.path.abspath(os.path.join(CLIENT_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from shared.trabalho_pi_cifra_cesar import desempacotar_cesar, empacotar_cesar
+from shared.compress_encrypt import empacotar_cesar
+from shared.decompress_decrypt import desempacotar_cesar
 
 SERVER_URL = os.environ.get("SERVER_URL", "http://127.0.0.1:5000")
 WEB_DIR = os.path.join(CLIENT_DIR, "web")
@@ -87,7 +88,16 @@ def treinar():
     chave = _chave()
     csv_bytes = _csv("train", "treino")
     pacote = empacotar_cesar(csv_bytes, deslocamento=chave)   # zlib + César + base64
-    return jsonify(_server("POST", "/treinar", {"pacote_b64": pacote, "deslocamento": chave}))
+    corpo = _server("POST", "/treinar", {"pacote_b64": pacote, "deslocamento": chave})
+
+    pacote_grafico = corpo.pop("pacote_grafico_treino_b64", None)
+    if pacote_grafico:
+        try:
+            png = desempacotar_cesar(pacote_grafico, deslocamento=chave)
+        except Exception:
+            raise ErroApi("Não foi possível descriptografar o gráfico de treino.", 502)
+        corpo["grafico_treino_png"] = base64.b64encode(png).decode()
+    return jsonify(corpo)
 
 
 @app.post("/api/testar")

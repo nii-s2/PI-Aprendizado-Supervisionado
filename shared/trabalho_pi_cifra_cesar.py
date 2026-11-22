@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 FEATURE_COLS = ["time-5", "time-4", "time-3", "time-2", "time-1"]
 TARGET_COL = "time"
 
-NOME_API_REGRESSAO = "Regressão_Linear_PI_(FUNÇÂO)"
+NOME_API_REGRESSAO = "Regressão_Linear_PI"
 NOME_API_CIFRA_CESAR = "trabalho_pi_cifra_cesar"
 
 
@@ -199,72 +199,95 @@ def expectativa_k_fold(X, y, k=5, seed=42):
     }
 
 
-# --- 4. GERENCIADOR DE ESTADO DO MODELO ---
+# --- 4. GERENCIADOR DE ESTADO DO MODELO (ADAPTADO PARA Regressão_Linear_PI) ---
 class ServicoRegressaoPI:
-    def __init__(self):
+    def __init__(self, alvo: str = TARGET_COL):
+        self.alvo = alvo
         self.resetar()
 
     def resetar(self):
-        self.pesos = None
-        self.bias = None
-        self.mins_x = None
-        self.maxs_x = None
-        self.min_y = None
-        self.max_y = None
+        self.modelo = None
+        self.amostras_treino = 0
         self.expectativa = None
+        self.metricas_treino = None
+
+    def status(self) -> dict:
+        return {
+            "treinado": self.modelo is not None,
+            "api": NOME_API_REGRESSAO,
+            "cifra_api": NOME_API_CIFRA_CESAR,
+            "amostras_treino": self.amostras_treino if self.modelo is not None else 0,
+            "expectativa_desempenho": self.expectativa if self.modelo is not None else None,
+            "metricas_treino": self.metricas_treino if self.modelo is not None else None,
+        }
 
     def treinar_pacote(self, pacote_b64: str, deslocamento: int = 7):
-        csv_bytes = desempacotar_cesar(pacote_b64, deslocamento)
-        X, y, _, _ = ler_csv_de_bytes(csv_bytes, exigir_alvo=True)
-        if len(X) < 2:
-            raise ValueError("Base de treino precisa de pelo menos 2 linhas válidas.")
+        import importlib.util
+        import os
+        import matplotlib.pyplot as plt
 
-        self.expectativa = expectativa_k_fold(X, y, k=5)
-        self.mins_x, self.maxs_x = ajustar_minmax_matriz(X)
-        X_norm = aplicar_minmax_matriz(X, self.mins_x, self.maxs_x)
-        y_norm, self.min_y, self.max_y = normalizar_vetor(y)
-        self.pesos, self.bias = treinar_rl(X_norm, y_norm)
+        csv_bytes = desempacotar_cesar(pacote_b64, deslocamento)
+        modelo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Regressão_Linear_PI.py")
+        spec = importlib.util.spec_from_file_location("regressao_linear_pi_v4", modelo_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        modelo_dict = mod.treinar(csv_bytes, alvo=self.alvo)
+        if modelo_dict.get("fig") is not None:
+            plt.close(modelo_dict["fig"])
+
+        X, y, _, _ = mod._build_features(csv_bytes, alvo=self.alvo)
+        esp = modelo_dict["esperado"]
+        tr = modelo_dict["treino"]
+
+        self.modelo = modelo_dict
+        self.amostras_treino = int(len(X))
+        self.expectativa = {
+            "MSE_esperado": float(esp["MSE"]),
+            "RMSE_esperado": float(esp["RMSE"]),
+            "MAE_esperado": float(esp["MAE"]),
+            "R2_esperado": float(esp["R2"]),
+        }
+        self.metricas_treino = {k: float(v) for k, v in tr.items()}
 
         return {
             "status": "treinado",
             "api": NOME_API_REGRESSAO,
             "cifra_api": NOME_API_CIFRA_CESAR,
-            "amostras_treino": len(X),
+            "amostras_treino": self.amostras_treino,
             "expectativa_desempenho": self.expectativa,
+            "metricas_treino": self.metricas_treino,
         }
 
     def testar_pacote(self, pacote_b64: str, deslocamento: int = 7):
-        if self.pesos is None:
+        import importlib.util
+        import os
+
+        if self.modelo is None:
             raise RuntimeError("Modelo não treinado. Realize o treino antes do teste.")
 
         csv_bytes = desempacotar_cesar(pacote_b64, deslocamento)
-        X, _, linhas, possui_col_alvo = ler_csv_de_bytes(csv_bytes, exigir_alvo=False)
-        X_norm = aplicar_minmax_matriz(X, self.mins_x, self.maxs_x)
-        pred_norm = prever_rl(X_norm, self.pesos, self.bias)
-        previsoes = desnormalizar_vetor(pred_norm, self.min_y, self.max_y)
+        modelo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Regressão_Linear_PI.py")
+        spec = importlib.util.spec_from_file_location("regressao_linear_pi_v4", modelo_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
 
-        y_reais = []
-        preds_validos = []
-
-        for linha, p in zip(linhas, previsoes):
-            linha["time_previsto"] = f"{p:.4f}"
-            if possui_col_alvo:
-                bruto_y = str(linha.get(TARGET_COL, "")).strip()
-                if bruto_y != "":
-                    y_reais.append(float(bruto_y))
-                    preds_validos.append(p)
-
-        possui_rotulos = possui_col_alvo and len(y_reais) > 0
-        avaliacao = {"possui_rotulos": possui_rotulos}
+        saida, met, csv_resultado_bytes = mod.prever(self.modelo, csv_bytes, alvo=self.alvo)
+        possui_rotulos = met is not None
+        avaliacao = {
+            "possui_rotulos": possui_rotulos,
+            "amostras_teste": int(len(saida)),
+        }
 
         if possui_rotulos:
-            mse_real = calc_mse(y_reais, preds_validos)
-            mae_real = calc_mae(y_reais, preds_validos)
-            r2_real = calc_r2(y_reais, preds_validos)
+            mse_real = float(met["MSE"])
+            rmse_real = float(met["RMSE"])
+            mae_real = float(met["MAE"])
+            r2_real = float(met["R2"])
             esp = self.expectativa or {}
             avaliacao["desempenho_real"] = {
                 "MSE_real": mse_real,
-                "RMSE_real": math.sqrt(mse_real),
+                "RMSE_real": rmse_real,
                 "MAE_real": mae_real,
                 "R2_real": r2_real,
             }
@@ -277,13 +300,7 @@ class ServicoRegressaoPI:
         else:
             avaliacao["mensagem"] = "Teste sem rótulos: previsões geradas sem avaliação."
 
-        buf_csv = io.StringIO()
-        colunas_saida = list(linhas[0].keys()) if linhas else FEATURE_COLS + ["time_previsto"]
-        escritor = csv.DictWriter(buf_csv, fieldnames=colunas_saida)
-        escritor.writeheader()
-        escritor.writerows(linhas)
-
-        pacote_resposta = empacotar_cesar(buf_csv.getvalue().encode("utf-8"), deslocamento)
+        pacote_resposta = empacotar_cesar(csv_resultado_bytes, deslocamento)
         return {
             "api": NOME_API_REGRESSAO,
             "cifra_api": NOME_API_CIFRA_CESAR,

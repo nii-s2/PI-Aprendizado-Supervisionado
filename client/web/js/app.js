@@ -76,10 +76,12 @@
     testBtn.disabled = !modeloTreinado;
     resetBtn.disabled = !modeloTreinado;
     if (modeloTreinado) {
-      renderExpectativa(s.expectativa_desempenho, s.amostras_treino);
+      renderTreino(s);
       if ($("test-result").hidden) setPipeline(3, 4);
     } else {
       $("train-result").hidden = true;
+      $("train-plot-box").hidden = true;
+      $("train-downloads").hidden = true;
       const temArquivoTreino = Boolean($("train").files && $("train").files.length);
       setPipeline(0, temArquivoTreino ? 1 : null);
     }
@@ -97,12 +99,44 @@
     }
   }
 
-  function renderExpectativa(e, amostras) {
+  function renderTreino(s) {
+    const e = s.expectativa_desempenho;
+    const t = s.metricas_treino;
     if (!e) return;
+
+    // hold-out cronológico (últimos 20%): o "esperado" do notebook
     renderCards($("train-metrics"), [
       ["R²", e.R2_esperado], ["RMSE", e.RMSE_esperado], ["MAE", e.MAE_esperado],
-      ["MSE", e.MSE_esperado], ["Linhas de treino", amostras],
+      ["MSE", e.MSE_esperado], ["SSE", e.SSE_esperado], ["Linhas do hold-out", s.amostras_holdout],
     ]);
+
+    // ajuste final na base toda: o "treino" do notebook
+    if (t) {
+      renderCards($("train-fit-metrics"), [
+        ["R²", t.R2], ["RMSE", t.RMSE], ["MAE", t.MAE],
+        ["MSE", t.MSE], ["SSE", t.SSE], ["Linhas de treino", s.amostras_treino],
+      ]);
+    }
+
+    // parâmetros (np.round(params, 2) no notebook)
+    $("train-params").replaceChildren(...(s.parametros || []).map((p) => {
+      const tr = document.createElement("tr");
+      const a = document.createElement("td");
+      const b = document.createElement("td");
+      a.textContent = p.nome;
+      b.textContent = fmt(p.valor, 2);
+      tr.append(a, b);
+      return tr;
+    }));
+
+    // o gráfico só vem na resposta do treino; ao recarregar a página ele não é reenviado
+    if (s.grafico_treino_png) {
+      const url = `data:image/png;base64,${s.grafico_treino_png}`;
+      $("plot-train").src = url;
+      $("dl-plot-train").href = url;
+      $("train-plot-box").hidden = false;
+      $("train-downloads").hidden = false;
+    }
     $("train-result").hidden = false;
   }
 
@@ -190,7 +224,7 @@
     if (real) {
       renderCards(metricsEl, [
         ["R²", real.R2_real], ["RMSE", real.RMSE_real], ["MAE", real.MAE_real],
-        ["MSE", real.MSE_real], ["Linhas de teste", av.amostras_teste],
+        ["MSE", real.MSE_real], ["SSE", real.SSE_real], ["Linhas de teste", av.amostras_teste],
       ]);
       renderCards(diffEl, [["R²", diff.diff_R2], ["MAE", diff.diff_MAE], ["MSE", diff.diff_MSE]], fmtSinal);
     }

@@ -1,14 +1,6 @@
-# Regressão Segura (Execução Local)
+# Projeto Integrador
 
-Prevê o valor atual de uma **série temporal** (coluna `time`) a partir das **5 observações anteriores** (`time-5` … `time-1`). As bases são **compactadas (`zlib`) e criptografadas (cifra de César)** pelo client com a chave informada na interface web, e o server local treina e testa o modelo, devolvendo o CSV compactado (`.zip`) e o gráfico (`.png`).
-
-## Arquitetura Local (Sem Docker)
-
-```
-Navegador ──CSV + chave──► client/app.py (:8080) ──pacote_b64──► server/app.py (:5000)
- HTML/CSS/JS               shared/trabalho_pi_cifra_cesar.py     shared/trabalho_pi_cifra_cesar.py
-                           (entrega .zip e gráfico)              server/nucleo_pi.py + server/grafico.py
-```
+Prevê o valor atual de uma **série temporal** (coluna `time`) a partir das **5 observações anteriores** (`time-5` … `time-1`, ou geradas automaticamente se apenas `time` for fornecida). As bases são **compactadas (`zlib`) e criptografadas (cifra de César)** pelo client com a chave informada na interface web, e o server local treina e testa o modelo usando `shared/Regressão_Linear_PI.py`, devolvendo o CSV compactado (`.zip`) e o gráfico (`.png`).
 
 | Arquivo | Função |
 |---|---|
@@ -31,7 +23,8 @@ pip install -r requirements.txt
 ```bash
 python rodar_local.py
 ```
-Ou abra dois terminais separados:
+
+2. Ou abra dois terminais separados:
 ```bash
 # Terminal 1 (Server)
 python server/app.py
@@ -40,4 +33,4 @@ python server/app.py
 python client/app.py
 ```
 
-3. Acesse `http://127.0.0.1:8080` no navegador e teste com `sample_data/treino.csv` e `sample_data/teste.csv`.
+3. Acesse `http://127.0.0.1:8080` no navegador e teste com `sample_data/PI_train.csv` e `sample_data/PI_test.csv` (ou `sample_data/treino.csv` e `sample_data/teste.csv`).

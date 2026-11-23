@@ -4,6 +4,8 @@ import base64
 import io
 import os
 import sys
+import threading
+import time
 import zipfile
 
 import requests
@@ -17,7 +19,12 @@ if ROOT_DIR not in sys.path:
 from shared.compress_encrypt import empacotar_cesar
 from shared.decompress_decrypt import desempacotar_cesar
 
-SERVER_URL = os.environ.get("SERVER_URL", "http://127.0.0.1:5000")
+SERVER_URL = os.environ.get("SERVER_URL", "http://127.0.0.1:5000").rstrip("/")
+API_TOKEN = os.environ.get("API_TOKEN", "")
+HEADERS = {"X-API-Token": API_TOKEN} if API_TOKEN else {}
+# Plano gratuito do Render dorme após 15 min sem uso e leva ~1 min para acordar.
+# Localmente o padrão é 3 tentativas (rápido); no Render use WAKE_TENTATIVAS=12.
+WAKE_TENTATIVAS = int(os.environ.get("WAKE_TENTATIVAS", "3"))
 WEB_DIR = os.path.join(CLIENT_DIR, "web")
 
 app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
@@ -56,18 +63,42 @@ def _csv(campo: str, nome: str) -> bytes:
     return f.read()
 
 
+def _acordar_servidor(tentativas: int = WAKE_TENTATIVAS, espera: float = 5.0) -> bool:
+    """Chama /health até o servidor responder (acorda o Render gratuito)."""
+    for i in range(tentativas):
+        try:
+            if requests.request("GET", f"{SERVER_URL}/health", timeout=15).status_code == 200:
+                return True
+        except requests.RequestException:
+            pass
+        if i < tentativas - 1:
+            time.sleep(espera)
+    return False
+
+
+# acorda o servidor em paralelo ao boot do client, para o 1º acesso não esperar duas vezes
+if os.environ.get("WAKE_ON_START", "1") == "1":
+    threading.Thread(target=_acordar_servidor, daemon=True).start()
+
+
 def _server(metodo: str, rota: str, payload: dict | None = None) -> dict:
-    try:
-        resp = requests.request(metodo, f"{SERVER_URL}{rota}", json=payload, timeout=300)
-    except requests.RequestException:
+    if not _acordar_servidor():
         raise ErroApi(
-            f"Não foi possível falar com o servidor local ({SERVER_URL}). Verifique se server/app.py está rodando.",
-            502,
+            f"Não foi possível falar com o servidor ({SERVER_URL}). Se ele está no plano gratuito do "
+            "Render, pode estar iniciando (cerca de 1 minuto): tente de novo em instantes. "
+            "Em execução local, verifique se server/app.py está rodando.",
+            503,
         )
+    try:
+        resp = requests.request(metodo, f"{SERVER_URL}{rota}", json=payload, headers=HEADERS, timeout=300)
+    except requests.RequestException:
+        raise ErroApi("A conexão com o servidor foi interrompida durante o processamento.", 502)
     try:
         corpo = resp.json()
     except ValueError:
         corpo = {}
+    if resp.status_code == 401:
+        raise ErroApi("O servidor recusou o token de acesso: confira se API_TOKEN é o mesmo no client e no server.", 502)
     if resp.status_code != 200:
         raise ErroApi(corpo.get("erro", "Falha no servidor de treino."), resp.status_code)
     return corpo

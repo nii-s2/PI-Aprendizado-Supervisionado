@@ -1,5 +1,7 @@
 """API local do servidor: /health, /status, /reset, /treinar, /testar."""
+import hmac
 import logging
+import math
 import os
 import sys
 import threading
@@ -21,6 +23,30 @@ log = logging.getLogger("server")
 SERVICO = ServicoRegressaoPI()
 TRAVA = threading.Lock()  # um treino/teste/reset por vez
 
+# Token opcional (definido no Render): só quem o conhece usa a API. /health fica aberto.
+API_TOKEN = os.environ.get("API_TOKEN", "")
+
+
+@app.before_request
+def _autenticar():
+    if not API_TOKEN or request.path == "/health":
+        return None
+    enviado = request.headers.get("X-API-Token", "")
+    if not hmac.compare_digest(enviado.encode(), API_TOKEN.encode()):
+        return jsonify(erro="Não autorizado."), 401
+    return None
+
+
+def _limpar(obj):
+    """JSON não aceita NaN/Infinity (o navegador rejeita): troca por null."""
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
+    if isinstance(obj, dict):
+        return {k: _limpar(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_limpar(v) for v in obj]
+    return obj
+
 
 def _dados_pacote():
     dados = request.get_json(silent=True) or {}
@@ -36,7 +62,7 @@ def _dados_pacote():
 def _executar(acao):
     try:
         with TRAVA:
-            return jsonify(acao())
+            return jsonify(_limpar(acao()))
     except (ValueError, RuntimeError) as exc:
         return jsonify(erro=str(exc)), 400
     except Exception:
@@ -80,6 +106,6 @@ def testar():
 
 if __name__ == "__main__":
     host = os.environ.get("SERVER_HOST", "127.0.0.1")
-    port = int(os.environ.get("SERVER_PORT", "5000"))
+    port = int(os.environ.get("PORT") or os.environ.get("SERVER_PORT", "5000"))
     print(f"Servidor de processamento rodando localmente em http://{host}:{port}")
     app.run(host=host, port=port, debug=False, threaded=True)

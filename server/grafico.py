@@ -1,8 +1,11 @@
 """Gráfico do teste: série real x prevista e dispersão real x prevista em alta resolução."""
 import io
 import math
+import os
 
 import matplotlib.pyplot as plt
+
+DPI = int(os.environ.get("GRAFICO_DPI", "300"))   # no Render gratuito (0,1 CPU) use 200
 
 NAVY, STEEL, SLATE, GOLD, PEACH, ICE = "#131A3C", "#224B68", "#315D6B", "#E6C17A", "#FDD595", "#7FB0BF"
 
@@ -31,7 +34,7 @@ def gerar_grafico(reais: list[float], previsoes: list[float]) -> bytes:
         1,
         2 if tem_reais else 1,
         figsize=(16 if tem_reais else 9.5, 6.2),
-        dpi=300,
+        dpi=DPI,
         facecolor=NAVY,
     )
     axes = list(axes) if tem_reais else [axes]
@@ -39,8 +42,8 @@ def gerar_grafico(reais: list[float], previsoes: list[float]) -> bytes:
     ax = axes[0]
     x = list(range(1, len(previsoes) + 1))
     if tem_reais:
-        ax.plot(x, reais, color=ICE, linewidth=2.2, label="Real (time)")
-    ax.plot(x, previsoes, color=GOLD, linewidth=2.2, linestyle="--", label="Previsto")
+        ax.plot(x, reais, color=GOLD, linewidth=2.2, label="Real (time)")
+    ax.plot(x, previsoes, color=ICE, linewidth=2.2, linestyle="--", label="Previsto")
     ax.set_xlabel("Linha da base de teste")
     ax.set_ylabel("time")
     ax.set_title("Série real e prevista")
@@ -61,17 +64,17 @@ def gerar_grafico(reais: list[float], previsoes: list[float]) -> bytes:
 
     fig.tight_layout(pad=1.6)
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=300, facecolor=NAVY, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=DPI, facecolor=NAVY, bbox_inches="tight")
     plt.close(fig)
     return buf.getvalue()
 
 
 def gerar_grafico_treino(reais: list[float], ajuste: list[float]) -> bytes:
     """Mesmo gráfico do notebook: ajuste linear x série temporal na base de treino."""
-    fig, ax = plt.subplots(figsize=(13, 5.2), dpi=300, facecolor=NAVY)
+    fig, ax = plt.subplots(figsize=(13, 5.2), dpi=DPI, facecolor=NAVY)
     x = list(range(len(reais)))
-    ax.plot(x, ajuste, color=GOLD, linewidth=2.0, label="Linear Fitting")
-    ax.plot(x, reais, color=ICE, linewidth=2.0, label="Time Serie")
+    ax.plot(x, ajuste, color=ICE, linewidth=2.0, label="Linear Fitting")
+    ax.plot(x, reais, color=GOLD, linewidth=2.0, label="Time Serie")
     ax.set_xlabel("Linha da base de treino")
     ax.set_ylabel("time")
     ax.set_title("Ajuste linear na base de treino")
@@ -81,6 +84,6 @@ def gerar_grafico_treino(reais: list[float], ajuste: list[float]) -> bytes:
 
     fig.tight_layout(pad=1.6)
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=300, facecolor=NAVY, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=DPI, facecolor=NAVY, bbox_inches="tight")
     plt.close(fig)
     return buf.getvalue()

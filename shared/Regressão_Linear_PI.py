@@ -43,7 +43,12 @@ def _carregar_csv_input(arquivo_csv):
     if isinstance(arquivo_csv, pd.DataFrame):
         return arquivo_csv.copy()
     if isinstance(arquivo_csv, bytes):
-        return pd.read_csv(io.BytesIO(arquivo_csv))
+        try:
+            return pd.read_csv(io.BytesIO(arquivo_csv))
+        except UnicodeDecodeError as exc:
+            raise ValueError("O arquivo não está em UTF-8. Salve o CSV como UTF-8 e tente de novo.") from exc
+        except (pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
+            raise ValueError("Não foi possível ler o arquivo como CSV (cabeçalho na 1ª linha e vírgula como separador).") from exc
     if isinstance(arquivo_csv, (str, os.PathLike)):
         texto = os.fspath(arquivo_csv)
         if isinstance(texto, str) and ("\n" in texto or "\r" in texto or "," in texto or ";" in texto):
@@ -65,8 +70,11 @@ def _build_features(df, alvo=TARGET):
     """
     df = _carregar_csv_input(df)
     if all(c in df.columns for c in FEATURE_COLS):
-        X = df[FEATURE_COLS].to_numpy(dtype=float)
-        y = df[alvo].to_numpy(dtype=float) if alvo in df.columns else None
+        try:
+            X = df[FEATURE_COLS].to_numpy(dtype=float)
+            y = df[alvo].to_numpy(dtype=float) if alvo in df.columns else None
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Há valores não numéricos nas colunas de entrada ou em '{alvo}'.") from exc
         return X, y, list(FEATURE_COLS), df.copy()
 
     if alvo not in df.columns:
@@ -74,7 +82,10 @@ def _build_features(df, alvo=TARGET):
             f"CSV sem colunas de lag e sem coluna '{alvo}' — não há como montar features."
         )
 
-    s = df[alvo].to_numpy(dtype=float)
+    try:
+        s = df[alvo].to_numpy(dtype=float)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"Há valores não numéricos na coluna '{alvo}'.") from exc
     if len(s) <= LAGS:
         raise ValueError(
             f"Série muito curta ({len(s)} linhas) para gerar {LAGS} lags."
@@ -164,7 +175,10 @@ def prever(modelo, df_teste, alvo=TARGET, out_csv=None):
 
     met = None
     if y_true is not None:
-        met = metricas(y_true, df_alin[f"{alvo_efetivo}_previsto"].to_numpy(dtype=float))
+        previsto = df_alin[f"{alvo_efetivo}_previsto"].to_numpy(dtype=float)
+        com_rotulo = np.isfinite(y_true)           # linhas com 'time' vazio ficam sem avaliação
+        if com_rotulo.any():
+            met = metricas(y_true[com_rotulo], previsto[com_rotulo])
 
     csv_bytes = df_alin.to_csv(index=False).encode("utf-8")
     return df_alin, met, csv_bytes

@@ -32,7 +32,7 @@
       </div>
       <div class="model-state">
         <span class="label">Modelo</span>
-        <span id="pill" class="pill" role="status" aria-live="polite">Verificando…</span>
+        <span id="pill" class="pill" role="status" aria-live="polite">Conectando ao servidor…</span>
         <button type="button" id="reset" class="btn btn-ghost">Resetar modelo</button>
         <p class="help">Apaga o treino atual para você treinar com outra base.</p>
       </div>
@@ -82,7 +82,7 @@
         <span class="drop-title">Base de teste</span>
         <span class="drop-hint" data-hint>Arraste um .csv ou clique para escolher</span>
       </label>
-      <p class="help">Mesmas colunas do treino. Se <code>time</code> estiver ausente ou vazio, o servidor só gera as previsões, sem avaliar.</p>
+      <p class="help">Mesmas colunas do treino. Se <code>time</code> estiver ausente ou vazio, o servidor só gera as previsões, sem avaliar. Linhas com <code>time</code> vazio entre outras preenchidas só recebem previsão.</p>
       <div class="actions">
         <button type="submit" id="btn-test" class="btn" disabled>Testar modelo</button>
         <span id="status-test" class="status" role="status" aria-live="polite"></span>

@@ -88,6 +88,8 @@
   }
 
   async function atualizarStatus() {
+    // no plano gratuito do Render o servidor pode estar dormindo (~1 min para acordar)
+    const aviso = setTimeout(() => { pill.textContent = "Acordando o servidor… (até ~1 min)"; }, 4000);
     try {
       aplicarStatus(await api("/api/status"));
     } catch (err) {
@@ -96,6 +98,8 @@
       pill.textContent = "Servidor indisponível";
       testBtn.disabled = true;
       resetBtn.disabled = true;
+    } finally {
+      clearTimeout(aviso);
     }
   }
 

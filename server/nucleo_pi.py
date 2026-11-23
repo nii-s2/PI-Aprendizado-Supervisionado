@@ -97,7 +97,8 @@ class ServicoRegressaoPI:
 
     def testar_pacote(self, pacote_b64: str, deslocamento: int = 7) -> dict:
         if self.modelo is None:
-            raise RuntimeError("Modelo não treinado. Realize o treino antes do teste.")
+            raise RuntimeError("Modelo não treinado. Realize o treino antes do teste. "
+                               "(Se o servidor reiniciou ou estava inativo, o modelo em memória foi perdido: treine de novo.)")
 
         csv_bytes = desempacotar_cesar(pacote_b64, deslocamento)
         saida, met, csv_resultado = MODELO.prever(self.modelo, csv_bytes, alvo=self.alvo)
@@ -114,6 +115,14 @@ class ServicoRegressaoPI:
             "possui_rotulos": possui_rotulos,
             "amostras_teste": int(len(saida)),
         }
+        if possui_rotulos:
+            n_rotuladas = int(saida[self.alvo].notna().sum())
+            avaliacao["amostras_avaliadas"] = n_rotuladas
+            if n_rotuladas < len(saida):
+                avaliacao["mensagem"] = (
+                    f"Avaliação feita em {n_rotuladas} das {len(saida)} linhas: "
+                    f"as demais estão sem '{self.alvo}' e só receberam previsão."
+                )
         if possui_rotulos:
             sse = float(met["SSE"])
             mse = float(met["MSE"])

@@ -1,0 +1,41 @@
+# Blueprint do Render: dois serviços web a partir deste repositório.
+#   regressao-server -> treina e executa o modelo (nuvem)
+#   regressao-client -> site HTML + API que compacta/criptografa antes de falar com o server
+services:
+  - type: web
+    name: regressao-server
+    runtime: python
+    plan: free
+    buildCommand: pip install -r server/requirements.txt
+    # 1 worker: o modelo treinado fica em memória, então todas as requisições precisam cair no mesmo processo.
+    startCommand: gunicorn --chdir server --workers 1 --threads 4 --timeout 300 --bind 0.0.0.0:$PORT app:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: MPLBACKEND
+        value: Agg
+      - key: GRAFICO_DPI        # 200 deixa os gráficos nítidos e leves para a CPU do plano gratuito
+        value: "200"
+      - key: API_TOKEN          # gerado pelo Render; só o client conhece
+        generateValue: true
+
+  - type: web
+    name: regressao-client
+    runtime: python
+    plan: free
+    buildCommand: pip install -r client/requirements.txt
+    startCommand: gunicorn --chdir client --workers 1 --threads 4 --timeout 330 --bind 0.0.0.0:$PORT app:app
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: SERVER_URL         # AJUSTE se a URL do regressao-server no painel tiver sufixo
+        value: https://regressao-server.onrender.com
+      - key: API_TOKEN          # copia o token gerado no server
+        fromService:
+          type: web
+          name: regressao-server
+          envVarKey: API_TOKEN
+      - key: WAKE_TENTATIVAS    # espera o server acordar (12 x ~20 s)
+        value: "12"

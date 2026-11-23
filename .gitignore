@@ -1,6 +1,8 @@
-.env
 __pycache__/
 *.pyc
 .venv/
-*.egg-info/
+venv/
+modelo.joblib
+predictions.csv
+.env
 .DS_Store

@@ -58,6 +58,11 @@ def _carregar_csv_input(arquivo_csv):
     raise TypeError("Formato de entrada não suportado para o arquivo CSV.")
 
 
+def _serie_numerica(df, coluna):
+    """Converte a coluna para float, transformando valores inválidos/vazios em NaN."""
+    return pd.to_numeric(df[coluna], errors="coerce").to_numpy(dtype=float)
+
+
 def _build_features(df, alvo=TARGET):
     """Retorna (X, y, cols, df_alinhado).
     - Usa time-5..time-1 se existirem.
@@ -66,11 +71,8 @@ def _build_features(df, alvo=TARGET):
     """
     df = _carregar_csv_input(df)
     if all(c in df.columns for c in FEATURE_COLS):
-        try:
-            X = df[FEATURE_COLS].to_numpy(dtype=float)
-            y = df[alvo].to_numpy(dtype=float) if alvo in df.columns else None
-        except (ValueError, TypeError) as exc:
-            raise ValueError(f"Há valores não numéricos nas colunas de entrada ou em '{alvo}'.") from exc
+        X = np.column_stack([_serie_numerica(df, c) for c in FEATURE_COLS])
+        y = _serie_numerica(df, alvo) if alvo in df.columns else None
         return X, y, list(FEATURE_COLS), df.copy()
 
     if alvo not in df.columns:
@@ -78,10 +80,7 @@ def _build_features(df, alvo=TARGET):
             f"CSV sem colunas de lag e sem coluna '{alvo}' — não há como montar features."
         )
 
-    try:
-        s = df[alvo].to_numpy(dtype=float)
-    except (ValueError, TypeError) as exc:
-        raise ValueError(f"Há valores não numéricos na coluna '{alvo}'.") from exc
+    s = _serie_numerica(df, alvo)
     if len(s) <= LAGS:
         raise ValueError(
             f"Série muito curta ({len(s)} linhas) para gerar {LAGS} lags."
@@ -97,10 +96,16 @@ def treinar(df, alvo=TARGET):
     X, y, cols, _ = _build_features(df, alvo=alvo)
     if y is None:
         raise ValueError("CSV de treino precisa ter a coluna alvo.")
+
+    mascara_valida = np.isfinite(X).all(axis=1) & np.isfinite(y)
+    X = X[mascara_valida]
+    y = y[mascara_valida]
+
     if len(y) < 8:
-        raise ValueError("A base de treino precisa de pelo menos 8 linhas para o ajuste e a validação.")
-    if not np.isfinite(X).all() or not np.isfinite(y).all():
-        raise ValueError("A base de treino contém valores ausentes ou não numéricos.")
+        raise ValueError(
+            "A base de treino precisa de pelo menos 8 linhas válidas (sem valores ausentes) "
+            "para o ajuste e a validação."
+        )
 
     xmin, xmax = X.min(axis=0), X.max(axis=0)
     denom = np.where((xmax - xmin) == 0, 1.0, xmax - xmin)
@@ -139,19 +144,24 @@ def prever(modelo, df_teste, alvo=TARGET):
             f"Shape inesperado: teste tem {X.shape[1]} features, "
             f"modelo espera {len(modelo['colunas'])}."
         )
-    if not np.isfinite(X).all():
-        raise ValueError("A base de teste contém valores ausentes ou não numéricos.")
 
-    Xn = (X - modelo["xmin"]) / modelo["denom"]
-    df_alin = df_alin.copy()
-    df_alin[f"{alvo_efetivo}_previsto"] = f(Xn, *modelo["params"])
+    mascara_valida = np.isfinite(X).all(axis=1)
+    if not mascara_valida.any():
+        raise ValueError("Nenhuma linha válida restou na base de teste após remover entradas com valores ausentes.")
+
+    X_valido = X[mascara_valida]
+    df_valido = df_alin.loc[mascara_valida].copy()
+    y_valido = y_true[mascara_valida] if y_true is not None else None
+
+    Xn = (X_valido - modelo["xmin"]) / modelo["denom"]
+    df_valido[f"{alvo_efetivo}_previsto"] = f(Xn, *modelo["params"])
 
     met = None
-    if y_true is not None:
-        previsto = df_alin[f"{alvo_efetivo}_previsto"].to_numpy(dtype=float)
-        com_rotulo = np.isfinite(y_true)           # linhas com 'time' vazio ficam sem avaliação
+    if y_valido is not None:
+        previsto = df_valido[f"{alvo_efetivo}_previsto"].to_numpy(dtype=float)
+        com_rotulo = np.isfinite(y_valido)           # linhas com 'time' vazio ficam sem avaliação
         if com_rotulo.any():
-            met = metricas(y_true[com_rotulo], previsto[com_rotulo])
+            met = metricas(y_valido[com_rotulo], previsto[com_rotulo])
 
-    csv_bytes = df_alin.to_csv(index=False).encode("utf-8")
-    return df_alin, met, csv_bytes
+    csv_bytes = df_valido.to_csv(index=False).encode("utf-8")
+    return df_valido, met, csv_bytes

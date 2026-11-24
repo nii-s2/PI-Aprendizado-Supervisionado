@@ -2,6 +2,7 @@
 compactar/criptografar antes de chamar o server local e descompactar/descriptografar na volta."""
 import base64
 import io
+import logging
 import os
 import sys
 import threading
@@ -26,6 +27,9 @@ HEADERS = {"X-API-Token": API_TOKEN} if API_TOKEN else {}
 # Localmente o padrão é 3 tentativas (rápido); no Render use WAKE_TENTATIVAS=12.
 WAKE_TENTATIVAS = int(os.environ.get("WAKE_TENTATIVAS", "3"))
 WEB_DIR = os.path.join(CLIENT_DIR, "web")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("client")
 
 app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
@@ -63,17 +67,22 @@ def _csv(campo: str, nome: str) -> bytes:
     return f.read()
 
 
-def _acordar_servidor(tentativas: int = WAKE_TENTATIVAS, espera: float = 5.0) -> bool:
-    """Chama /health até o servidor responder (acorda o Render gratuito)."""
+def _acordar_servidor(tentativas: int = WAKE_TENTATIVAS, espera: float = 5.0) -> str | None:
+    """Chama /health até o servidor responder (acorda o Render gratuito).
+    Devolve None se respondeu, ou o motivo da última falha."""
+    motivo = "sem resposta"
     for i in range(tentativas):
         try:
-            if requests.request("GET", f"{SERVER_URL}/health", timeout=15).status_code == 200:
-                return True
-        except requests.RequestException:
-            pass
+            resp = requests.request("GET", f"{SERVER_URL}/health", timeout=15)
+            if resp.status_code == 200:
+                return None
+            motivo = f"{SERVER_URL}/health respondeu HTTP {resp.status_code}"
+        except requests.RequestException as exc:
+            motivo = f"falha de conexão com {SERVER_URL} ({type(exc).__name__})"
+        log.warning("Servidor inacessível (tentativa %d/%d): %s", i + 1, tentativas, motivo)
         if i < tentativas - 1:
             time.sleep(espera)
-    return False
+    return motivo
 
 
 # acorda o servidor em paralelo ao boot do client, para o 1º acesso não esperar duas vezes
@@ -82,11 +91,12 @@ if os.environ.get("WAKE_ON_START", "1") == "1":
 
 
 def _server(metodo: str, rota: str, payload: dict | None = None) -> dict:
-    if not _acordar_servidor():
+    motivo = _acordar_servidor()
+    if motivo:
         raise ErroApi(
-            f"Não foi possível falar com o servidor ({SERVER_URL}). Se ele está no plano gratuito do "
-            "Render, pode estar iniciando (cerca de 1 minuto): tente de novo em instantes. "
-            "Em execução local, verifique se server/app.py está rodando.",
+            f"Não foi possível falar com o servidor: {motivo}. Se ele está no plano gratuito do Render, "
+            "pode estar iniciando (cerca de 1 minuto): tente de novo. Se persistir, confira se SERVER_URL "
+            "é exatamente a URL do regressao-server. Em execução local, verifique se server/app.py está rodando.",
             503,
         )
     try:
@@ -140,7 +150,8 @@ def testar():
 
     try:
         csv_resultado = desempacotar_cesar(corpo["pacote_resposta_b64"], deslocamento=chave)
-        grafico_png = desempacotar_cesar(corpo["pacote_grafico_b64"], deslocamento=chave)
+        pacote_grafico = corpo.get("pacote_grafico_b64")   # ausente quando o teste não tem rótulos
+        grafico_png = desempacotar_cesar(pacote_grafico, deslocamento=chave) if pacote_grafico else None
     except Exception:
         raise ErroApi("Não foi possível descriptografar a resposta do servidor.", 502)
 
@@ -148,11 +159,14 @@ def testar():
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("previsoes_time.csv", csv_resultado)
 
-    return jsonify(
-        avaliacao=corpo["avaliacao"],
-        resultado_zip=base64.b64encode(zip_buf.getvalue()).decode(),
-        grafico_png=base64.b64encode(grafico_png).decode(),
-    )
+    resposta = {
+        "avaliacao": corpo["avaliacao"],
+        "resultado_csv": base64.b64encode(csv_resultado).decode(),
+        "resultado_zip": base64.b64encode(zip_buf.getvalue()).decode(),
+    }
+    if grafico_png:
+        resposta["grafico_png"] = base64.b64encode(grafico_png).decode()
+    return jsonify(resposta)
 
 
 if __name__ == "__main__":

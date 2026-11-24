@@ -233,9 +233,18 @@
       renderCards(diffEl, [["R²", diff.diff_R2], ["MAE", diff.diff_MAE], ["MSE", diff.diff_MSE]], fmtSinal);
     }
 
-    const plotUrl = `data:image/png;base64,${data.grafico_png}`;
-    $("plot").src = plotUrl;
-    $("dl-plot").href = plotUrl;
+    // gráfico só existe quando o teste tem rótulos
+    const temGrafico = Boolean(data.grafico_png);
+    $("plot-box").hidden = !temGrafico;
+    $("dl-plot").hidden = !temGrafico;
+    if (temGrafico) {
+      const plotUrl = `data:image/png;base64,${data.grafico_png}`;
+      $("plot").src = plotUrl;
+      $("dl-plot").href = plotUrl;
+    } else {
+      $("plot").removeAttribute("src");
+    }
+    $("dl-csv").href = `data:text/csv;charset=utf-8;base64,${data.resultado_csv}`;
     $("dl-zip").href = `data:application/zip;base64,${data.resultado_zip}`;
     $("test-result").hidden = false;
     $("test-result").scrollIntoView({ behavior: "smooth", block: "start" });

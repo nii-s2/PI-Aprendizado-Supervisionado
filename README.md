@@ -1,4 +1,4 @@
-# Projeto Integrador
+# Projeto Integrador — v6 (Nuvem no Render + execução local)
 
 Prevê o valor atual de uma **série temporal** (coluna `time`) a partir das **5 observações anteriores** (`time-5` … `time-1`, ou geradas automaticamente se apenas `time` for fornecida). As bases são **compactadas (`zlib`) e criptografadas (cifra de César)** pelo client com a chave informada na interface web, e o server local treina e testa o modelo usando `shared/Regressão_Linear_PI.py`, devolvendo o CSV compactado (`.zip`) e o gráfico (`.png`).
 
@@ -41,12 +41,21 @@ Se o Render não aceitar o Blueprint no seu plano, crie os dois **Web Services**
 * 512 MB de RAM e 0,1 CPU: por isso o gráfico usa `GRAFICO_DPI=200` no Render (300 localmente).
 * Mantenha o servidor acordado só perto da apresentação (por exemplo, um ping em `/health` a cada 10 min); 24 h por dia gastaria as 750 horas mensais gratuitas.
 
+## Teste com e sem rótulos (para a apresentação)
+
+* **Treino:** o `PI_train.csv` sempre tem a coluna `time`. As colunas `time-5` … `time-1` são as entradas (X) e `time` é o rótulo (y).
+* **Teste COM rótulo** (tem `time`): o sistema prevê, compara com o valor real e mostra R², RMSE, MAE, MSE, SSE e a diferença para o esperado, além do gráfico. O CSV de previsões (`time_previsto`) fica disponível em `.csv` e `.zip`.
+* **Teste SEM rótulo** (só `time-5` … `time-1`, ou coluna `time` vazia): o sistema **só prevê**. A tela mostra apenas o aviso e o download do CSV (e do `.zip`) de previsões, **sem desempenho e sem gráfico**.
+* O sistema verifica se `time` existe (e está preenchida) no teste e escolhe o caso sozinho.
+
+Arquivos de exemplo em `sample_data/`: `PI_train.csv` (treino), `PI_test.csv` (teste com rótulo) e `PI_test_sem_rotulo.csv` (teste sem rótulo, 114 linhas). Sugestão: treine uma vez e rode os dois testes em sequência.
+
 ## Novidades da v6
 
 * **Pronto para o Render:** `render.yaml` (Blueprint com os dois serviços), gunicorn com 1 worker no server, porta via `PORT`, `requirements.txt` separados por serviço e Python 3.12 fixado.
 * **Token de acesso** entre client e server (`API_TOKEN`), gerado pelo Render.
 * **Cold start tratado:** o client acorda o server e tenta de novo até ele responder; o status inicial mostra um aviso.
-* **Teste sem rótulos corrigido:** coluna `time` vazia agora gera só previsões (antes o servidor devolvia `NaN`, que o navegador não consegue ler). Se só parte das linhas estiver sem `time`, a avaliação usa as linhas rotuladas e a tela informa quantas.
+* **Teste sem rótulos:** devolve apenas o CSV de previsões (sem desempenho e sem gráfico). Coluna `time` vazia também conta como sem rótulo (antes o servidor devolvia `NaN`, que o navegador não consegue ler). Se só parte das linhas estiver sem `time`, a avaliação usa as linhas rotuladas e a tela informa quantas.
 * **JSON sem `NaN`:** valores não finitos viram `null` e aparecem como "–".
 * **Mensagens de erro em português** para CSV não numérico, binário ou fora do UTF-8.
 * `scripts/verificar_deploy.py` para testar o deploy ponta a ponta.

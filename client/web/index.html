@@ -82,7 +82,7 @@
         <span class="drop-title">Base de teste</span>
         <span class="drop-hint" data-hint>Arraste um .csv ou clique para escolher</span>
       </label>
-      <p class="help">Mesmas colunas do treino. Se <code>time</code> estiver ausente ou vazio, o servidor só gera as previsões, sem avaliar. Linhas com <code>time</code> vazio entre outras preenchidas só recebem previsão.</p>
+      <p class="help">Mesmas colunas do treino. <strong>Com</strong> a coluna <code>time</code>: o sistema prevê, compara com o valor real e mostra o desempenho. <strong>Sem</strong> ela (só <code>time-5</code> … <code>time-1</code>): gera apenas o CSV de previsões, sem desempenho e sem gráfico.</p>
       <div class="actions">
         <button type="submit" id="btn-test" class="btn" disabled>Testar modelo</button>
         <span id="status-test" class="status" role="status" aria-live="polite"></span>
@@ -95,11 +95,12 @@
         <h3>Diferença para o esperado <small>(real − esperado)</small></h3>
         <dl class="metrics" id="test-diff"></dl>
 
-        <figure class="plot">
+        <figure class="plot" id="plot-box">
           <img id="plot" alt="Série real e prevista na base de teste">
         </figure>
         <div class="downloads">
-          <a id="dl-zip" class="btn" download="previsoes_time.zip">Baixar resultado (.zip)</a>
+          <a id="dl-csv" class="btn" download="previsoes_time.csv">Baixar previsões (.csv)</a>
+          <a id="dl-zip" class="btn btn-ghost" download="previsoes_time.zip">Baixar previsões compactadas (.zip)</a>
           <a id="dl-plot" class="btn btn-ghost" download="grafico.png">Baixar gráfico (.png)</a>
         </div>
       </div>

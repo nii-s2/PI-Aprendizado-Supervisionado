@@ -3,6 +3,9 @@ import io
 import math
 import os
 
+import matplotlib
+
+matplotlib.use("Agg")   # O servidor só gera PNG
 import matplotlib.pyplot as plt
 
 DPI = int(os.environ.get("GRAFICO_DPI", "300"))   # no Render gratuito (0,1 CPU) use 200

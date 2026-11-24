@@ -1,10 +1,6 @@
 """Módulo de regressão linear adaptado de Regressão_Linear_PI.ipynb para a v4."""
 import io
 import os
-import joblib
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
@@ -97,7 +93,7 @@ def _build_features(df, alvo=TARGET):
 
 
 # ---------- treino ----------
-def treinar(df, alvo=TARGET, model_path=None):
+def treinar(df, alvo=TARGET):
     X, y, cols, _ = _build_features(df, alvo=alvo)
     if y is None:
         raise ValueError("CSV de treino precisa ter a coluna alvo.")
@@ -119,12 +115,6 @@ def treinar(df, alvo=TARGET, model_path=None):
     y_fit = f(Xn, *params)
     treino = metricas(y, y_fit)
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(y_fit, color="red", label="Linear Fitting")
-    ax.plot(y, color="blue", label="Time Serie")
-    ax.legend(loc="best")
-    fig.tight_layout()
-
     modelo = {
         "params": params,
         "params_cov": params_cov,
@@ -135,21 +125,12 @@ def treinar(df, alvo=TARGET, model_path=None):
         "alvo": alvo,
         "treino": treino,
         "esperado": esperado,
-        "fig": fig,
     }
-
-    if model_path:
-        joblib.dump({k: v for k, v in modelo.items() if k != "fig"}, model_path)
-        print(f"Modelo salvo em '{model_path}'.")
-
     return modelo
 
 
 # ---------- teste / aplicação ----------
-def prever(modelo, df_teste, alvo=TARGET, out_csv=None):
-    if isinstance(modelo, (str, os.PathLike)):
-        modelo = joblib.load(modelo)
-
+def prever(modelo, df_teste, alvo=TARGET):
     alvo_efetivo = alvo or modelo.get("alvo", TARGET)
     X, y_true, _, df_alin = _build_features(df_teste, alvo=alvo_efetivo)
 
@@ -161,17 +142,9 @@ def prever(modelo, df_teste, alvo=TARGET, out_csv=None):
     if not np.isfinite(X).all():
         raise ValueError("A base de teste contém valores ausentes ou não numéricos.")
 
-    denom = modelo.get("denom")
-    if denom is None:
-        denom = np.where((modelo["xmax"] - modelo["xmin"]) == 0, 1.0, modelo["xmax"] - modelo["xmin"])
-
-    Xn = (X - modelo["xmin"]) / denom
+    Xn = (X - modelo["xmin"]) / modelo["denom"]
     df_alin = df_alin.copy()
     df_alin[f"{alvo_efetivo}_previsto"] = f(Xn, *modelo["params"])
-
-    if out_csv:
-        df_alin.to_csv(out_csv, index=False)
-        print(f"Previsões salvas em '{out_csv}'.")
 
     met = None
     if y_true is not None:
@@ -182,10 +155,3 @@ def prever(modelo, df_teste, alvo=TARGET, out_csv=None):
 
     csv_bytes = df_alin.to_csv(index=False).encode("utf-8")
     return df_alin, met, csv_bytes
-
-
-# ---------- reset ----------
-def reset_model(model_path="modelo.joblib"):
-    if model_path and os.path.exists(model_path):
-        os.remove(model_path)
-        print(f"Modelo '{model_path}' removido. Pronto para novo treino.")

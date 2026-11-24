@@ -3,7 +3,6 @@ import importlib.util
 import math
 import os
 import sys
-import matplotlib.pyplot as plt
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
@@ -77,9 +76,6 @@ class ServicoRegressaoPI:
         self.modelo = modelo
         self.amostras_treino = int(len(X))
 
-        if modelo.get("fig") is not None:
-            plt.close(modelo["fig"])
-
         return {
             "status": "treinado",
             "treinado": True,
@@ -142,13 +138,18 @@ class ServicoRegressaoPI:
                 "diff_R2": r2 - self.expectativa["R2_esperado"],
             }
         else:
-            avaliacao["mensagem"] = "Teste sem rótulos: previsões geradas sem avaliação."
+            avaliacao["mensagem"] = (
+                f"Teste sem rótulos (sem a coluna '{self.alvo}' preenchida): foram geradas apenas as "
+                "previsões, sem avaliação de desempenho."
+            )
 
-        grafico_bytes = gerar_grafico(reais, previsoes)
-        return {
+        resposta = {
             "api": NOME_API_REGRESSAO,
             "cifra_api": NOME_API_CIFRA_CESAR,
             "avaliacao": avaliacao,
             "pacote_resposta_b64": empacotar_cesar(csv_resultado, deslocamento),
-            "pacote_grafico_b64": empacotar_cesar(grafico_bytes, deslocamento),
         }
+        # O gráfico compara real x previsto: só faz sentido (e só é gerado) quando há rótulos.
+        if possui_rotulos:
+            resposta["pacote_grafico_b64"] = empacotar_cesar(gerar_grafico(reais, previsoes), deslocamento)
+        return resposta
